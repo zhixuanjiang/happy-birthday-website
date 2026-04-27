@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>happybirthday</title>
+    <style>
+        body {
+            overflow: hidden;
+            margin: 0;
+        }
+    </style>
+</head>
+
+<body>
+   
+    <script type="module">
+        // 导入三维模型库
+        import * as THREE from "https://cdn.skypack.dev/three@0.136.0";
+        // 导入轨道控制库
+        import { OrbitControls } from "https://cdn.skypack.dev/three@0.136.0/examples/jsm/controls/OrbitControls";
+        // 导入字体加载库
+        import { FontLoader } from "https://cdn.skypack.dev/three@0.136.0/examples/jsm/loaders/FontLoader.js";
+        import { TextGeometry } from "https://cdn.skypack.dev/three@0.136.0/examples/jsm/geometries/TextGeometry.js";
+
+        // 创建场景
+        let scene = new THREE.Scene();
+        scene.background = new THREE.Color(0x160016);
+
+        // 创建相机
+        let camera = new THREE.PerspectiveCamera(60, innerWidth / innerHeight, 1, 1000);
+        camera.position.set(20, 14, 23);
+
+        // 创建渲染器
+        let renderer = new THREE.WebGLRenderer();
+        renderer.setSize(innerWidth, innerHeight);
+        document.body.appendChild(renderer.domElement);
+
+        window.addEventListener("resize", () => {
+            camera.aspect = innerWidth / innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(innerWidth, innerHeight);
+        });
+
+        // 创建控制器
+        let controls = new OrbitControls(camera, renderer.domElement);
+        controls.enableDamping = true;
+
+        // 全局uniform
+        let gu = { time: { value: 0 } };
+        
+        // 数组：点的大小和移动
+        let centerSizes = [];
+        let shift = [];
+
+        // 中心物体的位移函数
+        let pushShift = () => {
+            shift.push(
+                Math.random() * Math.PI,
+                Math.random() * Math.PI * 2,
+                (Math.random() * 0.9 + 0.1) * Math.PI * 0.1,
+                Math.random() * 0.9 + 0.1
+            );
+        };
+       
+        
+        // 中心物体的点
+        let centerPts = new Array(100000).fill().map(p => {
+            
+            centerSizes.push(Math.random() * 1.5 + 0.5);
+            pushShift();
+            return new THREE.Vector3().randomDirection().multiplyScalar(Math.random() * 0.5 + 9.5);
+        });
+
+        const createHeartPoints = (numPoints) => {
+            let pts = [];
+            let sizes = [];
+            for (let i = 0; i < numPoints; i++) {
+                let t = Math.random() * Math.PI * 2; // 角度t随机取值
+                let r = 0.5 * Math.sqrt(Math.random()); // 随机半径
+                let x = 16 * Math.pow(Math.sin(t), 3) * r;
+                let y = (13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t)) * r;
+                let z = (Math.random() - 0.5) * 2; // 随机高度
+                
+                pts.push(new THREE.Vector3(x, y, z));
+                sizes.push(Math.random() * 1.5 + 0.5);
+                pushShift();
+            }
+            return { pts, sizes };
+        };
+
+        // 生成爱心形状的几何体
+        const heartData = createHeartPoints(200000);
+
+        let heartGeometry = new THREE.BufferGeometry().setFromPoints(heartData.pts);
+        heartGeometry.setAttribute("sizes", new THREE.Float32BufferAttribute(heartData.sizes, 1));
+        heartGeometry.setAttribute("shift", new THREE.Float32BufferAttribute(shift, 4));
+
+        // 创建环的点函数
+        const createRingPoints = (numPoints, innerRadius, outerRadius) => {
+            let pts = [];
+            let sizes = [];
+            for (let i = 0; i < numPoints; i++) {
+                let rand = Math.pow(Math.random(), 1.5);
+                let radius = Math.sqrt(outerRadius * outerRadius * rand + (1 - rand) * innerRadius * innerRadius);
+                pts.push(new THREE.Vector3().setFromCylindricalCoords(radius, Math.random() * 2 * Math.PI, (Math.random() - 0.5) * 2));
+                sizes.push(Math.random() * 1.5 + 0.5);
+            }
+            return { pts, sizes };
+        };
+
+        // 生成四个环的几何体
+        const ring1 = createRingPoints(100000, 19, 20);
+        const ring2 = createRingPoints(100000, 19, 20);
+        const ring3 = createRingPoints(100000, 19, 20);
+        const ring4 = createRingPoints(100000, 20, 40);
+
+        // 创建几何体和缓冲属性
+        let centerGeometry = new THREE.BufferGeometry().setFromPoints(centerPts);
+        centerGeometry.setAttribute("sizes", new THREE.Float32BufferAttribute(centerSizes, 1));
+        centerGeometry.setAttribute("shift", new THREE.Float32BufferAttribute(shift, 4));
+
+        const createRingGeometry = (ringData) => {
+            let geometry = new THREE.BufferGeometry().setFromPoints(ringData.pts);
+            geometry.setAttribute("sizes", new THREE.Float32BufferAttribute(ringData.sizes, 1));
+            geometry.setAttribute("shift", new THREE.Float32BufferAttribute(shift, 4));
+            return geometry;
+        };
+
+        let ringGeometry1 = createRingGeometry(ring1);
+        let ringGeometry2 = createRingGeometry(ring2);
+        let ringGeometry3 = createRingGeometry(ring3);
+        let ringGeometry4 = createRingGeometry(ring4);
+
+        // 创建材质
+        let material = new THREE.PointsMaterial({
+            size: 0.125,
+            transparent: true,
+            depthTest: false,
+            blending: THREE.AdditiveBlending,
+            onBeforeCompile: shader => {
+                shader.uniforms.time = gu.time;
+                shader.vertexShader = `
+                    uniform float time;
+                    attribute float sizes;
+                    attribute vec4 shift;
+                    varying vec3 vColor;
+                    ${shader.vertexShader}
+                `.replace(
+                    `gl_PointSize = size;`,
+                    `gl_PointSize = size * sizes;`
+                ).replace(
+                    `#include <color_vertex>`,
+                    `#include <color_vertex>
+                    float d = length(abs(position)/vec3(40.,10.,40));
+                    d = clamp(d, 0., 1.);
+                    vColor = mix(vec3(227., 155., 0.), vec3(100., 50., 255.), d) / 255.;`
+                ).replace(
+                    `#include <begin_vertex>`,
+                    `#include <begin_vertex>
+                    float t = time;
+                    float moveT = mod(shift.x + shift.z * t, PI2);
+                    float moveS = mod(shift.y + shift.z * t, PI2);
+                    transformed += vec3(cos(moveS) * sin(moveT), cos(moveT), sin(moveS) * sin(moveT)) * shift.w;`
+                );
+                shader.fragmentShader = `
+                    varying vec3 vColor;
+                    ${shader.fragmentShader}
+                `.replace(
+                    `#include <clipping_planes_fragment>`,
+                    `#include <clipping_planes_fragment>
+                    float d = length(gl_PointCoord.xy - 0.5);`
+                ).replace(
+                    `vec4 diffuseColor = vec4( diffuse, opacity );`,
+                    `vec4 diffuseColor = vec4(vColor, smoothstep(0.5, 0.1, d));`
+                );
+            }
+        });
+
+        // 创建点云
+        let centerPoints = new THREE.Points(centerGeometry, material);
+        let ringPoints1 = new THREE.Points(ringGeometry1, material);
+        let ringPoints2 = new THREE.Points(ringGeometry2, material);
+        let ringPoints3 = new THREE.Points(ringGeometry3, material);
+        let ringPoints4 = new THREE.Points(ringGeometry4, material);
+        let heartPoints = new THREE.Points(heartGeometry, material);
+
+        // 旋转顺序
+        centerPoints.rotation.order = "ZYX";
+        ringPoints1.rotation.order = "ZYX";
+        ringPoints2.rotation.order = "ZYX";
+        ringPoints3.rotation.order = "ZYX";
+        ringPoints4.rotation.order = "ZYX";
+
+        // 添加到场景
+        scene.add(centerPoints);
+        scene.add(ringPoints1);
+        scene.add(ringPoints2);
+        scene.add(ringPoints3);
+        scene.add(ringPoints4);
+        scene.add(heartPoints);
+
+// 添加 3D 文字
+const addTextToScene = (font) => {
+            const textGeometry = new TextGeometry('Happy Birthday', {
+                font: font,
+                size: 2,   // 文字大小
+                height: 0.5, // 文字厚度
+                curveSegments: 12, // 曲线分段数
+                bevelEnabled: true,
+                bevelThickness: 0.1,
+                bevelSize: 0.1,
+                bevelOffset: 0,
+                bevelSegments: 5
+            });
+
+            const textMaterial = new THREE.MeshBasicMaterial({ 
+    color: 0xd06090,   // 设置字体颜色为蓝色
+    transparent: true, // 启用透明度
+    opacity: 0.5       // 设置透明度为 50%
+});
+            const textMesh = new THREE.Mesh(textGeometry, textMaterial);
+            textMesh.position.set(3, 12, 0); // 设置文字位置
+            textMesh.rotation.y = Math.PI / 8; // 使文字绕 X 轴旋转 45 度
+            scene.add(textMesh);
+        };
+
+        // 加载字体
+        const loader = new FontLoader();
+        loader.load('https://threejs.org/examples/fonts/helvetiker_regular.typeface.json', function (font) {
+            addTextToScene(font);  // 字体加载完成后添加到场景
+        });
+
+        
+        // 创建时钟
+        let clock = new THREE.Clock();
+
+        // 渲染循环
+        renderer.setAnimationLoop(() => {
+            controls.update();
+
+            let t = clock.getElapsedTime() * 0.5;
+            gu.time.value = t * Math.PI;
+
+            // 独立旋转
+            centerPoints.rotation.y = t * 0.3;   // 中心物体
+        
+            ringPoints1.rotation.z = t * 1;    // 环1
+       
+            ringPoints2.rotation.x = t * 0.5;   // 环2
+            ringPoints3.rotation.y = t * 0.2;    // 环3
+            ringPoints3.rotation.z = t * 0.2;    // 环3
+            ringPoints4.rotation.y = t * 0.25;   // 环4
+
+            renderer.render(scene, camera);
+        });
+    </script>
+</body>
+
+</html>
