@@ -34,9 +34,11 @@
 - FontLoader + TextGeometry – 3D 文字生成
 
 ## 文件结构 / File Structure
-your-project/
-├── happybirthday.html # 完整代码（包含样式、脚本）
-└── README.md # 项目说明
+```
+happy-birthday-website/
+├── happy-birthday.html   # 完整代码（包含样式、脚本）
+└── README.md             # 项目说明
+```
 
 > 无需额外依赖，直接打开 `happybirthday.html` 即可运行。  
 > No extra dependencies – just open `happybirthday.html` in a browser.
